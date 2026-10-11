@@ -176,3 +176,16 @@ execute_process(
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 add_definitions(-DBUILD_VERSION="${GIT_HASH}")
+
+# Native behavioral tests use the same core as the libretro frontend.
+option(DCGB_BUILD_TESTS "Build native mapper and libretro regression tests" OFF)
+if(DCGB_BUILD_TESTS)
+    enable_testing()
+    add_executable(mbc30_tests tests/mbc30_tests.cpp)
+    target_include_directories(mbc30_tests PRIVATE ${CORE_DIR} ${CORE_DIR}/gb_core)
+    target_link_libraries(mbc30_tests PRIVATE ${PROJECT_NAME})
+    add_test(NAME mbc30_mapper COMMAND mbc30_tests mapper)
+    foreach(players 1 2 3 4 16)
+        add_test(NAME mbc30_libretro_${players}p COMMAND mbc30_tests libretro ${players})
+    endforeach()
+endif()
