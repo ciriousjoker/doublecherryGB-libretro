@@ -1,0 +1,52 @@
+name: Native MBC30 tests
+
+on:
+  push:
+    branches: [master, support-mbc30]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release -DLIBMOBILE_BUILD_SHARED=OFF -DDCGB_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build/native --parallel 4
+      - name: Test
+        run: ctest --test-dir build/native --output-on-failure
+      - name: Upload core
+        uses: actions/upload-artifact@v4
+        with:
+          name: DoubleCherryGB-${{ matrix.os }}
+          path: |
+            build/native/DoubleCherryGB_libretro.dylib
+            build/native/DoubleCherryGB_libretro.so
+          if-no-files-found: error
+
+  address-sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >-
+          cmake -S . -B build/asan -DCMAKE_BUILD_TYPE=Debug
+          -DLIBMOBILE_BUILD_SHARED=OFF -DDCGB_BUILD_TESTS=ON
+          '-DCMAKE_C_FLAGS=-fsanitize=address -fno-omit-frame-pointer'
+          '-DCMAKE_CXX_FLAGS=-fsanitize=address -fno-omit-frame-pointer'
+      - name: Build
+        run: cmake --build build/asan --parallel 4
+      - name: Check memory access
+        # Upstream peripheral ownership leaks are outside mapper coverage.
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: ctest --test-dir build/asan --output-on-failure

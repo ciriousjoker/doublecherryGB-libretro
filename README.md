@@ -22,6 +22,12 @@
 
 Installation instructions may vary depending on your chosen libretro frontend.
 
+## Native builds and MBC30
+
+MBC30 cartridges support up to 4 MiB ROM and 64 KiB SRAM, including 4 MiB ROM
+hacks that retain 32 KiB saves. See [native build and regression test instructions](tests/README.md)
+for macOS/Linux, generated mapper fixtures and multiplayer state coverage.
+
 ## RetroArch
 
 You can install DoubleCherryGB through the built-in core downloader where supported.
