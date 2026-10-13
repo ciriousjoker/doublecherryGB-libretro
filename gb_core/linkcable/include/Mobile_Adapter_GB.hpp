@@ -25,6 +25,8 @@ class Mobile_Adapter_GB final
 public:
     struct SocketState {
         int fd = -1;
+        bool connecting = false;
+        bool connected = false;
     };
 
     explicit Mobile_Adapter_GB(gb* target_gb, std::string configPath = "mobile_adapter_gb_config.bin");
@@ -60,10 +62,10 @@ private:
     bool m_use_relay = false;
     std::string m_relay_ip;
     uint16_t m_relay_port;
-    bool m_show_own_phonenumber_at_startup;
+    bool m_show_own_phonenumber_at_startup = false;
 
     uint8_t m_slave_SB;
-    bool already_showed_phone_number;
+    bool already_showed_phone_number = false;
     bool persistent_relay_token_enabled = true;
     bool login_logged = false;
 

@@ -462,36 +462,32 @@ void Mobile_Adapter_GB::setupCallbacks()
             return -1;
         }
 
-        socket_set_block(it->second.fd, false);
-        // Wir nutzen direkt das native connect()
-        int rc = connect(it->second.fd, (struct sockaddr *)&sa, sizeof(sa));
-
-        if (rc == 0) return 1;
-
-        int err = socket_errno();
-        if (err == EINPROGRESS || err == EWOULDBLOCK || err == EALREADY) {
-            fd_set wr_fds;
-            FD_ZERO(&wr_fds);
-            FD_SET(it->second.fd, &wr_fds);
-
-            struct timeval tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 0; // Poll only; never delay the frontend frame for a connection.
-
-            int select_rc = select(it->second.fd + 1, NULL, &wr_fds, NULL, &tv);
-            if (select_rc > 0) {
-                int so_error = 0;
-                socklen_t len = sizeof(so_error);
-                // Cast auf (char*) verhindert Compiler-Warnungen/Fehler unter Windows
-                getsockopt(it->second.fd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len);
-                if (so_error == 0) return 1;
-                return -1;
-            }
-            return 0;
+        auto& socket = it->second;
+        if (socket.connected) return 1;
+        if (!socket.connecting) {
+            int rc = connect(socket.fd, (struct sockaddr *)&sa, sizeof(sa));
+            if (rc == 0) { socket.connected = true; return 1; }
+            int err = socket_errno();
+            if (err == EISCONN) { socket.connected = true; return 1; }
+            if (err != EINPROGRESS && err != EWOULDBLOCK && err != EALREADY) return -1;
+            socket.connecting = true;
         }
-
-        if (err == EISCONN) return 1;
-        return -1;
+        // Do not call connect again while pending: poll the original attempt.
+        fd_set wr_fds;
+        FD_ZERO(&wr_fds);
+        FD_SET(socket.fd, &wr_fds);
+        struct timeval tv = {0, 0};
+        int ready = select(socket.fd + 1, NULL, &wr_fds, NULL, &tv);
+        if (ready < 0) return socket_errno() == EINTR ? 0 : -1;
+        if (!ready) return 0;
+        int error = 0;
+        socklen_t length = sizeof(error);
+        if (getsockopt(socket.fd, SOL_SOCKET, SO_ERROR, (char*)&error, &length) < 0 || error) return -1;
+        struct sockaddr_in peer = {};
+        length = sizeof(peer);
+        if (getpeername(socket.fd, (struct sockaddr *)&peer, &length) < 0) return -1;
+        socket.connected = true;
+        return 1;
     });
 
     mobile_def_sock_listen(&m_adapter, [](void* u, unsigned c) {
