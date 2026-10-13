@@ -288,7 +288,7 @@ bool retro_load_game_special(unsigned type, const struct retro_game_info *info, 
     // implement for 3 - 4 Player
 
 
-    if (type != RETRO_GAME_TYPE_GAMEBOY_LINK_2P) {
+    if (type == RETRO_GAME_TYPE_GAMEBOY_LINK_2P && info && num_info == 2) {
 
         emulated_gbs = 2;
 
@@ -324,11 +324,8 @@ bool retro_load_game_special(unsigned type, const struct retro_game_info *info, 
         if (!info)
             return false;
 
-        for (i = 0; i < 2; i++)
-        {
-            v_gb[i] = NULL;
-            render[i] = NULL;
-        }
+        v_gb.assign(2, nullptr);
+        render.assign(2, nullptr);
 
         //check_variables();
         update_multiplayer_geometry();
@@ -343,7 +340,6 @@ bool retro_load_game_special(unsigned type, const struct retro_game_info *info, 
         for (i = 0; i < 2; i++)
             _serialize_size[i] = 0;
 
-        if (gblink_enable)
         {
             render[1] = new dmy_renderer(1);
             v_gb[1] = new gb(render[1], true, true);
@@ -353,8 +349,10 @@ bool retro_load_game_special(unsigned type, const struct retro_game_info *info, 
                 return false;
 
             // for link cables and IR:
-            v_gb[0]->set_target(v_gb[1]);
-            v_gb[1]->set_target(v_gb[0]);
+            if (gblink_enable) {
+                v_gb[0]->set_target(v_gb[1]);
+                v_gb[1]->set_target(v_gb[0]);
+            }
         }
 
         mode = MODE_DUAL_GAME;
@@ -552,113 +550,58 @@ void retro_run(void)
 
 }
 
+// Memory IDs identify a region, never an index in the emulated-player array.
+static bool resolve_memory(unsigned id, unsigned &player, unsigned &region)
+{
+    player = 0;
+    region = id;
+    if (mode == MODE_DUAL_GAME) {
+        switch (id) {
+        case RETRO_MEMORY_GAMEBOY_1_SRAM: region = RETRO_MEMORY_SAVE_RAM; break;
+        case RETRO_MEMORY_GAMEBOY_1_RTC: region = RETRO_MEMORY_RTC; break;
+        case RETRO_MEMORY_GAMEBOY_2_SRAM: player = 1; region = RETRO_MEMORY_SAVE_RAM; break;
+        case RETRO_MEMORY_GAMEBOY_2_RTC: player = 1; region = RETRO_MEMORY_RTC; break;
+        default: return false;
+        }
+    } else if (mode != MODE_SINGLE_GAME && mode != MODE_SINGLE_GAME_DUAL) {
+        return false;
+    }
+    return player < v_gb.size() && v_gb[player] != nullptr;
+}
+
 void *retro_get_memory_data(unsigned id)
 {
-    switch (mode)
-    {
-        case MODE_SINGLE_GAME:
-        case MODE_SINGLE_GAME_DUAL:
-        {
-            switch (id)
-            {
-                case RETRO_MEMORY_SAVE_RAM:
-                    return v_gb[id]->get_rom()->get_sram();
-                case RETRO_MEMORY_RTC:
-                    if (v_gb[id]->get_rom()->get_info()->cart_type == 0xFE)
-                        return &v_gb[id]->get_mbc()->huc3_baseTime; // Direkt der Zeiger auf die 8-Byte Variable
-                    else
-                        return &(render[id]->fixed_time);
-                case RETRO_MEMORY_VIDEO_RAM:
-                    return v_gb[id]->get_cpu()->get_vram();
-                case RETRO_MEMORY_SYSTEM_RAM:
-                    return v_gb[id]->get_cpu()->get_ram();
-                default:
-                    return NULL;
-            }
-            break;
-        }
-        case MODE_DUAL_GAME:
-        {
-            switch (id)
-            {
-                case RETRO_MEMORY_GAMEBOY_1_SRAM:
-                    return v_gb[id]->get_rom()->get_sram();
-                case RETRO_MEMORY_GAMEBOY_1_RTC:
-                    if (v_gb[0]->get_rom()->get_info()->cart_type == 0xFE)
-                        return &v_gb[0]->get_mbc()->huc3_baseTime;
-                    else
-                        return &(render[id]->fixed_time);
-                case RETRO_MEMORY_GAMEBOY_2_SRAM:
-                    return v_gb[id]->get_rom()->get_sram();
-                case RETRO_MEMORY_GAMEBOY_2_RTC:
-                    if (v_gb[1]->get_rom()->get_info()->cart_type == 0xFE)
-                        return &v_gb[1]->get_mbc()->huc3_baseTime;
-                    else
-                        return &(render[id]->fixed_time);
-                default:
-                    return NULL;
-            }
-            break;
-        }
+    unsigned player, region;
+    if (!resolve_memory(id, player, region)) return nullptr;
+    auto *game = v_gb[player];
+    switch (region) {
+    case RETRO_MEMORY_SAVE_RAM: return game->get_rom()->get_sram();
+    case RETRO_MEMORY_RTC:
+        return game->get_rom()->get_info()->cart_type == 0xFE
+            ? static_cast<void *>(&game->get_mbc()->huc3_baseTime)
+            : static_cast<void *>(&render[player]->fixed_time);
+    case RETRO_MEMORY_VIDEO_RAM: return game->get_cpu()->get_vram();
+    case RETRO_MEMORY_SYSTEM_RAM: return game->get_cpu()->get_ram();
+    default: return nullptr;
     }
-    return NULL;
 }
+
 size_t retro_get_memory_size(unsigned id)
 {
-    switch (mode)
-    {
-    case MODE_SINGLE_GAME:
-    case MODE_SINGLE_GAME_DUAL: /* todo: hook this properly */
-    {
-        switch (id)
-        {
-        case RETRO_MEMORY_SAVE_RAM:
-            return v_gb[id]->get_rom()->get_sram_size();
-        case RETRO_MEMORY_RTC:
-                if (v_gb[id]->get_rom()->get_info()->cart_type == 0xFE)
-                    return sizeof(v_gb[id]->get_mbc()->huc3_baseTime); // Gibt exakt 8 (Byte) zurück
-                else
-                    return sizeof(render[id]->fixed_time);
-        case RETRO_MEMORY_VIDEO_RAM:
-            if (v_gb[id]->get_rom()->get_info()->gb_type >= 3)
-                return 0x2000 * 2; // sizeof(cpu::vram);
-            return 0x2000;
-        case RETRO_MEMORY_SYSTEM_RAM:
-            if (v_gb[id]->get_rom()->get_info()->gb_type >= 3)
-                return 0x2000 * 4; // sizeof(cpu::ram);
-            return 0x2000;
-        default:
-            break;
-        }
-
-            break;
+    unsigned player, region;
+    if (!resolve_memory(id, player, region)) return 0;
+    auto *game = v_gb[player];
+    switch (region) {
+    case RETRO_MEMORY_SAVE_RAM: return game->get_rom()->get_sram_size();
+    case RETRO_MEMORY_RTC:
+        return game->get_rom()->get_info()->cart_type == 0xFE
+            ? sizeof(game->get_mbc()->huc3_baseTime) : sizeof(render[player]->fixed_time);
+    case RETRO_MEMORY_VIDEO_RAM:
+        return game->get_rom()->get_info()->gb_type >= 3 ? 0x4000 : 0x2000;
+    case RETRO_MEMORY_SYSTEM_RAM:
+        return game->get_rom()->get_info()->gb_type >= 3 ? 0x8000 : 0x2000;
+    default: return 0;
     }
-    case MODE_DUAL_GAME:
-    {
-        switch (id)
-        {
-        case RETRO_MEMORY_GAMEBOY_1_SRAM:
-            return v_gb[id]->get_rom()->get_sram_size();
-        case RETRO_MEMORY_GAMEBOY_1_RTC:
-                if (v_gb[0]->get_rom()->get_info()->cart_type == 0xFE)
-                    return sizeof(v_gb[0]->get_mbc()->huc3_baseTime);
-                else
-                    return sizeof(render[id]->fixed_time);
-        case RETRO_MEMORY_GAMEBOY_2_SRAM:
-                if (v_gb[1]->get_rom()->get_info()->cart_type == 0xFE)
-                    return sizeof(v_gb[1]->get_mbc()->huc3_baseTime);
-                else
-                    return sizeof(render[id]->fixed_time);
-        case RETRO_MEMORY_GAMEBOY_2_RTC:
-            return sizeof(render[id]->fixed_time);
-        default:
-            break;
-        }
-
-            break;
-    }
-    }
-    return 0;
 }
 
 // question: would saving both gb's into the same file be desirable ever?

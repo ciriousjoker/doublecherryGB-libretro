@@ -243,6 +243,16 @@ static void libretro_tests(int count) {
     emit(data, 255 * 0x4000 + 0x200, {0xfa, 0x00, 0x40, 0xc9});
     const retro_game_info info = {nullptr, data.data(), data.size(), nullptr};
     require(retro_load_game(&info), "libretro load");
+    require(retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM) == v_gb[0]->get_cpu()->get_ram(),
+            "System memory ID must select primary player, not player 2");
+    require(retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM) == 32768, "CGB system memory size");
+    require(retro_get_memory_data(RETRO_MEMORY_VIDEO_RAM) == v_gb[0]->get_cpu()->get_vram(),
+            "Video memory ID must select primary player, not player 3");
+    require(retro_get_memory_size(RETRO_MEMORY_VIDEO_RAM) == 16384, "CGB video memory size");
+    require(retro_get_memory_data(RETRO_MEMORY_RTC) != nullptr && retro_get_memory_size(RETRO_MEMORY_RTC) > 0,
+            "Primary player RTC export");
+    require(retro_get_memory_data(99999) == nullptr && retro_get_memory_size(99999) == 0,
+            "Unsupported memory IDs must be rejected");
     for (int i = 0; i < count; ++i)
         std::fill_n(v_gb.at(i)->get_rom()->get_sram(), 65536, byte(0x60 + i));
     for (int frame = 0; frame < 8; ++frame) retro_run();
@@ -311,6 +321,26 @@ static void libretro_tests(int count) {
     v_gb[0]->get_cpu()->write(0x4000, 7);
     require(v_gb[0]->get_cpu()->read(0xa000) == 128, "Battery survives fresh game load");
     retro_unload_game();
+    if (count == 1) {
+        auto second = image(6, 3);
+        const retro_game_info games[] = {
+            {nullptr, data.data(), data.size(), nullptr},
+            {nullptr, second.data(), second.size(), nullptr}
+        };
+        require(retro_load_game_special(0x101, games, 2), "Dual-content memory export fixture");
+        constexpr unsigned first_sram = (1 << 8) | RETRO_MEMORY_SAVE_RAM;
+        constexpr unsigned first_rtc = (2 << 8) | RETRO_MEMORY_RTC;
+        constexpr unsigned second_sram = (3 << 8) | RETRO_MEMORY_SAVE_RAM;
+        constexpr unsigned second_rtc = (3 << 8) | RETRO_MEMORY_RTC;
+        require(retro_get_memory_data(first_sram) == v_gb[0]->get_rom()->get_sram() &&
+                retro_get_memory_size(first_sram) == 65536, "Dual first SRAM export: size=" + std::to_string(retro_get_memory_size(first_sram)) + ", direct=" + std::to_string(v_gb[0]->get_rom()->get_sram_size()));
+        require(retro_get_memory_data(second_sram) == v_gb[1]->get_rom()->get_sram() &&
+                retro_get_memory_size(second_sram) == 32768, "Dual second SRAM export");
+        require(retro_get_memory_data(first_rtc) != nullptr && retro_get_memory_data(second_rtc) != nullptr,
+                "Dual RTC pointers");
+        require(retro_get_memory_size(first_rtc) == retro_get_memory_size(second_rtc), "Dual RTC sizes");
+        retro_unload_game();
+    }
     retro_deinit();
     std::filesystem::remove_all(scratch);
 }
