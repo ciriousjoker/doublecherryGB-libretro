@@ -30,7 +30,7 @@ public:
 	size_t get_state_size() override;
 	
 	int transfer_speed;
-	int seri_occer;
+	uint32_t seri_occer;
 	byte in_data_buffer[16];
 	bool use_v_gb_size;
 

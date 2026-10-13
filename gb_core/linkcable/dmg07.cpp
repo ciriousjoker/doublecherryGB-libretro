@@ -1,4 +1,5 @@
-﻿/*--------------------------------------------------
+﻿#include "../clock_math.hpp"
+/*--------------------------------------------------
 
    DoubleCherryGB - Gameboy Emulator (based on TGBDual)
    Four Player Adapter (DMG-07) Emulation
@@ -647,7 +648,7 @@ void dmg07::process()
 	//if (!is_ready_for_next_tik() || !all_IE_are_handled()) return;
 	//if (this->v_gb[0]->get_cpu()->get_clock() < this->seri_occer) return;
 	uint32_t now = this->v_gb[0]->get_cpu()->get_clock();
-	if ((int32_t)(now - this->seri_occer) < 0) {
+	if (!clock_at_or_after(now,this->seri_occer)) {
 
 		return;
 	}

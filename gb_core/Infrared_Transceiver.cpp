@@ -1,3 +1,4 @@
+#include "clock_math.hpp"
 //
 // Created by tim on 30.03.26.
 //
@@ -11,7 +12,7 @@
 extern retro_log_printf_t log_cb;
 extern bool logging_transfers_to_file_allowed;
 
-void Infrared_Transceiver::write_RP_REG(byte value, int now)
+void Infrared_Transceiver::write_RP_REG(byte value, uint32_t now)
 {
     RP_Reg new_ir_state;
     new_ir_state.reg_data = value;
@@ -42,7 +43,7 @@ void Infrared_Transceiver::write_RP_REG(byte value, int now)
 }
 
 
-byte Infrared_Transceiver::read_RP_REG(int cycle)
+byte Infrared_Transceiver::read_RP_REG(uint32_t cycle)
 {
     update_rx(cycle);
 
@@ -63,29 +64,19 @@ byte Infrared_Transceiver::read_RP_REG(int cycle)
 
 
 void Infrared_Transceiver::apply_duration_fix(Infrared_Signal* prev_signal,
-                                               int new_start, RP_Reg next_state)
+                                               uint32_t new_start, RP_Reg next_state)
 {
     if (!prev_signal) return;
 
-    prev_signal->duration = new_start - prev_signal->start_cycle;
-
-    // FIX #5: RISE/FALL korrekt zuordnen
-    // RISE = Licht geht AN, FALL = Licht geht AUS
-    if (prev_signal->light_on)
-        prev_signal->duration += RISE_DELAY;   // war an → steigende Flanke
-    else
-        prev_signal->duration += LIGHT_FADEOUT_DELAY;   // war aus → fallende Flanke
-
-    // Sicherstellen dass duration nie negativ wird
-    if (prev_signal->duration < 0)
-        prev_signal->duration = 0;
+    const int adjustment = prev_signal->light_on ? RISE_DELAY : LIGHT_FADEOUT_DELAY;
+    prev_signal->duration = clock_pulse_duration(new_start, prev_signal->start_cycle, adjustment);
 }
 
-void Infrared_Transceiver::receive_edge_ir_signal(Infrared_Signal* new_signal, int cycle)
+void Infrared_Transceiver::receive_edge_ir_signal(Infrared_Signal* new_signal, uint32_t cycle)
 {
     // Wir nehmen den cycle EXAKT so wie er vom Sender kommt
     int clocks_diff_between_gbs = ref_gb->get_renderer()->get_gb_id() ? 0 : 4;
-    int new_start = cycle;
+    uint32_t new_start = cycle;
     new_signal->start_cycle = new_start + LIGHT_RECOGNITION_DELAY + clocks_diff_between_gbs;
     new_signal->duration    = 0;
 
@@ -96,7 +87,7 @@ void Infrared_Transceiver::receive_edge_ir_signal(Infrared_Signal* new_signal, i
     if (signal_to_correct && signal_to_correct->duration == 0)
     {
         // Dauer = Jetzt - StartDesLetzten
-        signal_to_correct->duration = new_start - signal_to_correct->start_cycle + LIGHT_FADEOUT_DELAY;
+        signal_to_correct->duration = clock_pulse_duration(new_start,signal_to_correct->start_cycle,LIGHT_FADEOUT_DELAY);
 
         if (signal_to_correct->duration < 0) signal_to_correct->duration = 0;
 
@@ -114,13 +105,13 @@ void Infrared_Transceiver::receive_ir_pulse(Infrared_Signal* new_signal)
     rx.queue.emplace_back(new_signal);
 }
 
-void Infrared_Transceiver::update_rx(int now)
+void Infrared_Transceiver::update_rx(uint32_t now)
 {
     if (rx.has_current)
     {
-        int end = rx.current->start_cycle + rx.current->duration;
-        bool expired = (rx.current->duration > 0 && now >= end);
-        bool next_ready = (!rx.queue.empty() && now >= rx.queue.front()->start_cycle);
+        uint32_t end = rx.current->start_cycle + rx.current->duration;
+        bool expired = (rx.current->duration > 0 && clock_at_or_after(now,end));
+        bool next_ready = (!rx.queue.empty() && clock_at_or_after(now,rx.queue.front()->start_cycle));
 
         if (expired || next_ready)
         {
@@ -135,12 +126,12 @@ void Infrared_Transceiver::update_rx(int now)
     while (!rx.has_current && !rx.queue.empty())
     {
         Infrared_Signal* next = rx.queue.front();
-        if (now < next->start_cycle) break;
+        if (!clock_at_or_after(now,next->start_cycle)) break;
 
         rx.queue.pop_front();
 
         // Falls das Signal beim Abholen schon abgelaufen ist
-        if (next->duration > 0 && now >= (next->start_cycle + next->duration))
+        if (next->duration > 0 && clock_at_or_after(now,next->start_cycle+uint32_t(next->duration)))
         {
             delete next;
             continue;
@@ -152,7 +143,7 @@ void Infrared_Transceiver::update_rx(int now)
 }
 
 
-void Infrared_Transceiver::send_edge_ir_signal(Infrared_Signal* signal, int cycle)
+void Infrared_Transceiver::send_edge_ir_signal(Infrared_Signal* signal, uint32_t cycle)
 {
     if (infrared_target)
     {

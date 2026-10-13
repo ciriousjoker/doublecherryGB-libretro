@@ -109,7 +109,7 @@ private:
 	int delay_between_bytes_in_clocks = delay_between_bytes_in_clocks_default;
 	int delay_between_packages_in_clocks = delay_between_packages_in_clocks_default;
 
-	int last_log_clock = 0;
+	uint32_t last_log_clock = 0;
 
 
 	int transfer_count;

@@ -1,4 +1,5 @@
-﻿/*--------------------------------------------------
+﻿#include "clock_math.hpp"
+/*--------------------------------------------------
    TGB Dual - Gameboy Emulator -
    Copyright (C) 2001  Hii
 
@@ -45,6 +46,7 @@ apu::~apu()
 
 void apu::reset()
 {
+	write_clock_known=false;write_clocks=0;
 	//
 	snd->reset();
 }
@@ -61,10 +63,9 @@ byte apu::read(word adr)
 		return snd->mem[adr - 0xff10];
 }
 
-void apu::write(word adr, byte dat, int clock)
+void apu::write(word adr, byte dat, uint32_t clock)
 {
-	static int bef_clock = clock;
-	static int clocks = 0;
+	if(!write_clock_known){write_clock=clock;write_clocks=0;write_clock_known=true;}
 
 	snd->mem[adr - 0xFF10] = dat;
 
@@ -77,17 +78,16 @@ void apu::write(word adr, byte dat, int clock)
 
 	snd->process(adr, dat);
 
-	if (bef_clock > clock)
-		bef_clock = clock;
+	const uint32_t elapsed=clock-write_clock;
+	// A reset/load moves backwards; regular wrapping produces a small elapsed value.
+	if(elapsed<0x80000000u)write_clocks+=elapsed;else write_clocks=0;
 
-	clocks += clock - bef_clock;
-
-	while (clocks > CLOKS_PER_INTERVAL * (ref_gb->get_cpu()->get_speed() ? 2 : 1)) {
+	while (write_clocks > CLOKS_PER_INTERVAL * (ref_gb->get_cpu()->get_speed() ? 2 : 1)) {
 		snd->update();
-		clocks -= CLOKS_PER_INTERVAL * (ref_gb->get_cpu()->get_speed() ? 2 : 1);
+		write_clocks -= CLOKS_PER_INTERVAL * (ref_gb->get_cpu()->get_speed() ? 2 : 1);
 	}
 
-	bef_clock = clock;
+	write_clock = clock;
 }
 
 void apu::update()
@@ -566,17 +566,20 @@ void apu_snd::render(short* buf, int sample)
 	memcpy(&stat, &stat_cpy, sizeof(stat_cpy));
 
 	int tmp_l, tmp_r, tmp;
-	int now_clock = ref_apu->ref_gb->get_cpu()->get_clock();
+	uint32_t now_clock = ref_apu->ref_gb->get_cpu()->get_clock();
 	int cur = 0;
-	static int tmp_sample = 0, now_time, bef_sample_l[5] = { 0,0,0,0,0 }, bef_sample_r[5] = { 0,0,0,0,0 };
+	uint32_t now_time;
+	const uint32_t elapsed=now_clock-bef_clock;
+	const uint32_t frame_elapsed=elapsed<0x80000000u?elapsed:0;
+	static int tmp_sample = 0, bef_sample_l[5] = { 0,0,0,0,0 }, bef_sample_r[5] = { 0,0,0,0,0 };
 	int update_count = 0;
 
 	memset(buf, 0, sample * 4);
 
 	for (int i = 0; i < sample; i++) {
-		now_time = bef_clock + (now_clock - bef_clock) * i / sample;
+		now_time = bef_clock + uint32_t(uint64_t(frame_elapsed)*unsigned(i)/unsigned(sample));
 
-		if ((cur != 0x10000) && (now_time > write_que[cur].clock) && (que_count)) {
+		if ((cur != 0x10000) && clock_after(now_time,write_que[cur].clock) && (que_count)) {
 			process(write_que[cur].adr, write_que[cur].dat);
 			cur++;
 			if (cur >= que_count)
@@ -685,7 +688,7 @@ void apu_snd::render(short* buf, int sample)
 	memcpy(&stat, &stat_tmp, sizeof(stat));
 }
 
-void apu::serialize(serializer& s) { snd->serialize(s); }
+void apu::serialize(serializer& s) { snd->serialize(s); if(s.mode()==serializer::LOAD_BUF){write_clock_known=false;write_clocks=0;} }
 void apu_snd::serialize(serializer& s)
 {
 	// originally, the only things saved were stat, stat_cpy,

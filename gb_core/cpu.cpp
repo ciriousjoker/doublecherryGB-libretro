@@ -22,6 +22,7 @@
 // CPU emulation unit (I/O, IRQ, etc.)
 
 #include "gb.h"
+#include "clock_math.hpp"
 #include "../libretro/DoubleCherryEngine/libretro.h"
 #include <string>
 #include <istream>
@@ -117,7 +118,7 @@ void cpu::reset()
 	rp_que[1]=0x00000000;
 	que_cur=1;
 
-	next_ir_clock = 0;
+	next_ir_clock = 0;next_ir_clock_active=false;
 }
 
 void cpu::save_state(int *dat)
@@ -138,7 +139,7 @@ void cpu::save_state_ex(int *dat)
 	dat[0]=div_clock;
 	dat[1]=rest_clock;
 	dat[2]=sys_clock;
-	dat[3]=total_clock;
+	memcpy(dat+3,&total_clock,sizeof(total_clock));
 }
 
 void cpu::restore_state(int *dat)
@@ -159,7 +160,7 @@ void cpu::restore_state_ex(int *dat)
 	div_clock=dat[0];
 	rest_clock=dat[1];
 	sys_clock=dat[2];
-	total_clock=dat[3];
+	memcpy(&total_clock,dat+3,sizeof(total_clock));
 }
 
 byte cpu::read_direct(word adr)
@@ -939,7 +940,7 @@ void cpu::log_link_traffic(byte a, byte b)
 		std::string filePath = "./2_Player_Link_cable.txt";
 		std::ofstream ofs(filePath.c_str(), std::ios_base::out | std::ios_base::app);
 
-		int duration = total_clock - clocks_since_last_serial;
+		uint32_t duration = total_clock - clocks_since_last_serial;
 
 		ofs << duration << "\t\t\t\t"
 			<< "0x" << std::hex << std::setw(2) << std::setfill('0') << (int)a << "\t"
@@ -1085,7 +1086,7 @@ void cpu::exec(int clocks)
         }
 
 		
-		if (total_clock>seri_occer){
+		if (seri_occer!=0x7fffffffu && clock_after(total_clock,seri_occer)){
 			seri_occer=0x7fffffff;
 
 			//const bool netpacket_active = emulated_gbs == 1 && (num_clients == 1 || my_client_id == 1);
@@ -1172,7 +1173,7 @@ void cpu::exec(int clocks)
 		/*
 		if (this->m_dmg07 && this->is_clock_giver) {
 
-			if (total_clock > m_dmg07->seri_occer) {
+			if (clock_after(total_clock,m_dmg07->seri_occer)) {
 				this->m_dmg07->process();
 				ref_gb->get_regs()->SC &= 3;
 				m_dmg07->seri_occer = total_clock + m_dmg07->transfer_speed;
@@ -1213,6 +1214,7 @@ void cpu::serialize(serializer &s)
 	s_VAR(que_cur);
 
 	s_VAR(total_clock);
+	if(s.mode()==serializer::LOAD_BUF)next_ir_clock_active=false;
 	s_VAR(rest_clock);
 	s_VAR(sys_clock);
 	s_VAR(div_clock);

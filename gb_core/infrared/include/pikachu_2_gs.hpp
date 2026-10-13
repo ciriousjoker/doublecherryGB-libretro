@@ -64,7 +64,8 @@ private:
 	pikachu_2_gs_state current_state; 
 	std::vector<Infrared_Signal*> in_ir_signals, out_ir_signals;
 	std::vector<byte> in_bytes, bytes_out_for_msg, all_bytes_out_for_checksum;
-	int sending_delay;
+	uint32_t sending_delay = 0;
+	bool sending_delay_active = false;
 	int delay_start_clock; 
 	bool is_waiting_for_delay_carry;
 	
@@ -77,7 +78,7 @@ private:
 	void log_ir_answer_delay();
 
 	bool log_answer_delay;
-	int clock_at_last_sended_signal;
+	uint32_t clock_at_last_sended_signal = 0;
 
 
 	

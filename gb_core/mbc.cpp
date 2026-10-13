@@ -1,4 +1,5 @@
-﻿/*--------------------------------------------------
+﻿#include "clock_math.hpp"
+/*--------------------------------------------------
    TGB Dual - Gameboy Emulator -
    Copyright (C) 2001  Hii
 
@@ -730,16 +731,18 @@ byte mbc::huc3_read(word adr)
 		case 0x0D: return 1;
 		case 0x0E:
 		{
-			if (ref_gb->get_cpu()->get_clock() <= ref_gb->get_cpu()->next_ir_clock)
+			if (ref_gb->get_cpu()->next_ir_clock_active && !clock_after(ref_gb->get_cpu()->get_clock(),ref_gb->get_cpu()->next_ir_clock))
 				return (0xC0 | (byte)huc_ir_last_received_light);
 
+			ref_gb->get_cpu()->next_ir_clock_active=false;
 			if (ref_gb->get_ir_master_device()) ref_gb->get_ir_master_device()->process_ir();
 
 			if (!ref_gb->get_infrared_transceiver()->rx.queue.empty())
 			{
 				huc_ir_last_received_light = !ref_gb->get_infrared_transceiver()->rx.queue[0]->light_on;
 
-				ref_gb->get_cpu()->next_ir_clock = ref_gb->get_cpu()->get_clock() + ref_gb->get_infrared_transceiver()->rx.queue[0]->duration;
+				ref_gb->get_cpu()->next_ir_clock = ref_gb->get_cpu()->get_clock() + uint32_t(std::max(0,ref_gb->get_infrared_transceiver()->rx.queue[0]->duration));
+				ref_gb->get_cpu()->next_ir_clock_active=true;
 				ref_gb->get_infrared_transceiver()->rx.queue.erase(ref_gb->get_infrared_transceiver()->rx.queue.begin());
 
 				return (0xC0 | (byte)huc_ir_last_received_light);
@@ -764,7 +767,7 @@ void mbc::huc3_write(word adr,byte dat)
 		huc3_current_mem_control_reg = dat;
 		ext_is_ram = (dat == 0xA);
 		huc_ir_mode = (dat == 0xE);
-		if (huc_ir_mode) ref_gb->get_cpu()->next_ir_clock = -2147483648;
+		if (huc_ir_mode) ref_gb->get_cpu()->next_ir_clock_active=false;
 		break;
 	}
 	
@@ -820,14 +823,15 @@ void mbc::huc3_write(word adr,byte dat)
 				if (!ref_gb->get_cpu()->out_ir_signal_que.empty()) {
 					//correct last duration value
 					int size = ref_gb->get_cpu()->out_ir_signal_que.size();
-					ref_gb->get_cpu()->out_ir_signal_que[size - 1]->duration = ref_gb->get_cpu()->get_clock() - ref_gb->get_cpu()->out_ir_signal_que[size - 1]->duration;
+					ref_gb->get_cpu()->out_ir_signal_que[size - 1]->duration = clock_pulse_duration(ref_gb->get_cpu()->get_clock(),ref_gb->get_cpu()->out_ir_signal_que[size - 1]->start_cycle);
 					//ref_gb->get_cpu()->log_ir_traffic(ref_gb->get_cpu()->out_ir_signal_que[size - 1], false);
 					//ref_gb->send_ir_signal(ref_gb->get_cpu()->out_ir_signal_que[size - 1]);
 				}
 
 				//add signal to out queu
 				last_huc_ir_out_signal = dat & 0x01;
-				ref_gb->get_cpu()->out_ir_signal_que.push_back(new Infrared_Signal((dat == 0x01), ref_gb->get_cpu()->get_clock()));
+				auto *pulse=new Infrared_Signal(dat==0x01,0);pulse->start_cycle=ref_gb->get_cpu()->get_clock();
+				ref_gb->get_cpu()->out_ir_signal_que.push_back(pulse);
 			}
 			break;
 

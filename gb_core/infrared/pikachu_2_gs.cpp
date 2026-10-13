@@ -1,3 +1,4 @@
+#include "../clock_math.hpp"
 /*--------------------------------------------------
 
    DoubleCherryGB - Gameboy Emulator (based on TGBDual)
@@ -253,7 +254,7 @@ void pikachu_2_gs::check_hello_msg()
 	{
 		build_hello_msg();
 		current_state = RECEIVE_DATA_LENGTH;
-		sending_delay = v_gb[0]->get_cpu()->get_clock() + micro_seconds_to_clocks(1000);
+		sending_delay = v_gb[0]->get_cpu()->get_clock() + micro_seconds_to_clocks(1000);sending_delay_active=true;
 		
 	}
 
@@ -307,7 +308,7 @@ void pikachu_2_gs::reset()
 	is_master = false;
 	log_answer_delay = true;
 
-	sending_delay = 0;
+	sending_delay = 0;sending_delay_active=false;
 	in_data_length = 0;
 	current_state = RECEIVE_HELLO;
 	in_ir_signals.clear();
@@ -378,15 +379,13 @@ void pikachu_2_gs::add_postamble_to_out_signals() {
 
 void pikachu_2_gs::set_sending_delay(int clocks)
 {
-	sending_delay = v_gb[0]->get_cpu()->get_clock() + clocks;
+	sending_delay = v_gb[0]->get_cpu()->get_clock() + clocks;sending_delay_active=true;
 
 }
 
 bool pikachu_2_gs::is_waiting_for_delay()
 {
-	if (v_gb[0]->get_cpu()->get_clock() > sending_delay) sending_delay = 0;
-
-	return v_gb[0]->get_cpu()->get_clock() <= sending_delay;
+	return clock_waiting(v_gb[0]->get_cpu()->get_clock(), sending_delay, sending_delay_active);
 }
 
 word pikachu_2_gs::calc_checksum()

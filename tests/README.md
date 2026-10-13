@@ -62,3 +62,20 @@ repository. Its read-only palette observer can be applied to a separate checkout
 of this source for multiplayer tests. No game-source change is part of this PR.
 See [integration validation](integration-validation.md) for the tested reference
 and the remaining game-side gates.
+
+Clock rollover tests inject timestamps at both the signed boundary and unsigned
+wrap. They exercise actual CPU serial deadlines, pending state restoration,
+non-silent APU output, alternating APU instances, link readiness and IR pulses.
+Timestamp fields retain their four-byte serialized representation. Deadline
+comparisons assume observations less than half the 32-bit clock range apart.
+The Pikachu peripheral is an existing abstract WIP class; its shared active-delay
+helper is tested, without claiming end-to-end Pikachu protocol support.
+
+Instrument the shared core, including CPU/APU/link/IR paths, with UBSan:
+
+```sh
+cmake -S . -B build/clock-ubsan -DCMAKE_BUILD_TYPE=Debug \
+  -DLIBMOBILE_BUILD_SHARED=OFF -DDCGB_BUILD_TESTS=ON -DDCGB_SANITIZE_CORE=ON
+cmake --build build/clock-ubsan --parallel 4
+ctest --test-dir build/clock-ubsan --output-on-failure
+```

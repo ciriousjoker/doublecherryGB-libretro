@@ -615,7 +615,7 @@ byte gb::send_over_linkcable(byte out_data)
 
 }
 
-void gb::receive_edge_ir_signal(Infrared_Signal* signal, int now)
+void gb::receive_edge_ir_signal(Infrared_Signal* signal, uint32_t now)
 {
 	(void)now; //now here unused
 	get_infrared_transceiver()->receive_edge_ir_signal(signal, get_cpu()->get_clock());

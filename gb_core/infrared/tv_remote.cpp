@@ -236,7 +236,7 @@ void tv_remote::build_signal_frame(byte code)
 {
 	out_ir_signals.clear();
 	total_transmission_time = 0;
-	v_gb[0]->get_cpu()->next_ir_clock = -2147483648;
+	v_gb[0]->get_cpu()->next_ir_clock_active=false;
 
 
 		switch (current_remote_protocol)

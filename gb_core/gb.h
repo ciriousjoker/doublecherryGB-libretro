@@ -78,7 +78,7 @@ enum color_correction_mode {
 struct Infrared_Signal {
 	bool light_on;
 	int duration;
-	int start_cycle;
+	uint32_t start_cycle = 0;
 	Infrared_Signal(bool light, int clocks) {
 		light_on = light;
 		duration = clocks; 
@@ -89,7 +89,7 @@ struct Infrared_Signal {
 
 class I_Infrared_Receiver {
 public:
-	void virtual receive_edge_ir_signal(Infrared_Signal* signal, int cycle) =  0;
+	void virtual receive_edge_ir_signal(Infrared_Signal* signal, uint32_t cycle) =  0;
 
 	void virtual receive_ir_pulse(Infrared_Signal* signal) =  0;
 };
@@ -132,9 +132,9 @@ public:
 		rp_reg.reg_data = 0x00;
 	}
 
-	void write_RP_REG(byte value, int cycle);
-	byte read_RP_REG(int cycle);
-	void receive_edge_ir_signal(Infrared_Signal* signal, int cycle) override;
+	void write_RP_REG(byte value, uint32_t cycle);
+	byte read_RP_REG(uint32_t cycle);
+	void receive_edge_ir_signal(Infrared_Signal* signal, uint32_t cycle) override;
 	void  receive_ir_pulse(Infrared_Signal* signal) override;
 
 	IR_Line rx; //received Infrared Signals
@@ -168,11 +168,11 @@ private:
 
 	}rp_reg;
 
-	void update_rx(int now);
+	void update_rx(uint32_t now);
 	void send_ir_signal(Infrared_Signal* signal) override {};
-	void send_edge_ir_signal(Infrared_Signal* signal, int cycle);
-	void correct_prev_duration(IR_Line* line, int new_start, RP_Reg new_ir_state);
-	void apply_duration_fix(Infrared_Signal* prev_signal, int new_start, RP_Reg next_state);
+	void send_edge_ir_signal(Infrared_Signal* signal, uint32_t cycle);
+	void correct_prev_duration(IR_Line* line, uint32_t new_start, RP_Reg new_ir_state);
+	void apply_duration_fix(Infrared_Signal* prev_signal, uint32_t new_start, RP_Reg next_state);
 
 	class Infrared_Logger
 	{
@@ -288,7 +288,7 @@ struct apu_stat{
 struct apu_que {
 	word adr;
 	byte dat;
-	int clock;
+	uint32_t clock;
 };
 
 struct rom_info {
@@ -394,7 +394,7 @@ public:
 
 	void set_ir_master_device(I_Infrared_Master_Device* ir_master) { this->ir_master_device = ir_master;  };
 	I_Infrared_Master_Device* get_ir_master_device() { return this->ir_master_device; };
-	void receive_edge_ir_signal(Infrared_Signal* signal, int now) override;
+	void receive_edge_ir_signal(Infrared_Signal* signal, uint32_t now) override;
 	void receive_ir_pulse(Infrared_Signal* signal) override;
 	void send_ir_signal(Infrared_Signal* signal) override;
 
@@ -468,7 +468,7 @@ private:
 	std::map<std::string, byte> undo_cheat_map; 
 
 	
-	I_Infrared_Master_Device* ir_master_device;
+	I_Infrared_Master_Device* ir_master_device = nullptr;
 
 	int line_cycle = 0;   // 0–455
 	int ppu_mode = 2;     // Start meist Mode 2
@@ -564,7 +564,7 @@ public:
 	byte *get_mem();
 
 	byte read(word adr);
-	void write(word adr,byte dat,int clock);
+	void write(word adr,byte dat,uint32_t clock);
 
 	void update();
 	void reset();
@@ -573,6 +573,8 @@ public:
 private:
 	gb *ref_gb;
 	apu_snd *snd;
+	uint32_t write_clock = 0,write_clocks = 0;
+	bool write_clock_known = false;
 };
 
 class apu_snd : public sound_renderer
@@ -606,7 +608,7 @@ private:
 	apu_stat stat_cpy,stat_tmp;
 	apu_que write_que[0x10000];
 	int que_count;
-	int bef_clock;
+	uint32_t bef_clock;
 	apu *ref_apu;
 
 	bool b_echo;
@@ -792,7 +794,7 @@ public:
 
 	cpu_regs *get_regs() { return &regs; }
 
-	int get_clock() { return total_clock; }
+	uint32_t get_clock() { return total_clock; }
 	bool get_speed() { return speed; }
 
 	bool *get_halt() { return &halt; }
@@ -809,11 +811,12 @@ public:
 	void log_link_traffic(byte a, byte b);
 	//void log_ir_traffic(Infrared_Signal *signal, bool incoming);
 
-	int next_ir_clock = INT_MIN;
+	uint32_t next_ir_clock = 0;
+	bool next_ir_clock_active = false;
 	std::vector<Infrared_Signal*> out_ir_signal_que;
 
 	
-	int total_clock, seri_occer;
+	uint32_t total_clock, seri_occer;
 
 private:
 	byte inline io_read(word adr);
@@ -861,7 +864,7 @@ private:
 
 	byte _ff6c,_ff72,_ff73,_ff74,_ff75;
 
-	int clocks_since_last_serial;
+	uint32_t clocks_since_last_serial;
 	
 	byte last_rp_write = 0xC0;
 
