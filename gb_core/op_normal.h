@@ -204,7 +204,7 @@ case 0xF9: REG_SP=REG_HL;break; //LD SP,HL : 11 111 001 :state 6
 case 0xC5: REG_SP-=2;writew(REG_SP,REG_BC);break; //PUSH BC
 case 0xD5: REG_SP-=2;writew(REG_SP,REG_DE);break; //PUSH DE
 case 0xE5: REG_SP-=2;writew(REG_SP,REG_HL);break; //PUSH HL
-case 0xF5: write(REG_SP-2,z802gb[REG_F]|0xe);write(REG_SP-1,REG_A);REG_SP-=2;break; //PUSH AF // 未使用ビットは1になるみたい(メタルギアより)
+case 0xF5: write(REG_SP-2,z802gb[REG_F]);write(REG_SP-1,REG_A);REG_SP-=2;break; // PUSH AF: the unused low flag bits are always zero.
 
 //POP rq : 11 rq0 001 : state 10 (12?)
 case 0xC1: REG_B=read(REG_SP+1);REG_C=read(REG_SP);REG_SP+=2;break; //POP BC
@@ -354,43 +354,21 @@ case 0x3B: REG_SP--;break; //DEC SP
 
 //汎用：CPU制御 opcode
 
-/*case 0x27://DAA :state 4
-	tmp.b.h=REG_A&0x0F;
-	tmp.w=(REG_F&N_FLAG)?
-		((REG_F&C_FLAG)?(((REG_F&H_FLAG)?0x9A00:0xA000)+C_FLAG):((REG_F&H_FLAG)?0xFA00:0x0000)):
-		((REG_F&C_FLAG)?(((REG_F&H_FLAG)?0x6600:((tmp.b.h<0x0A)?0x6000:0x6600))+C_FLAG):
-		((REG_F&H_FLAG)?((REG_A<0xA0)?0x0600:(0x6600+C_FLAG)):((tmp.b.h<0x0A)?((REG_A<0xA0)?0x0000:(0x6000+C_FLAG)):
-		((REG_F<0x90)?0x600:(0x6600+C_FLAG)))));
-	REG_A+=tmp.b.h;
-	REG_F=ZTable[REG_A]|(tmp.b.l|(REG_F&N_FLAG));
-	break;
-*/
-case 0x27://DAA :state 4
-  tmp.b.h=REG_A&0x0F;
-  tmp.w=(REG_F&N_FLAG)?
-  (
-    (REG_F&C_FLAG)?
-      (((REG_F&H_FLAG)? 0x9A00:0xA000)+C_FLAG):
-      ((REG_F&H_FLAG)? 0xFA00:0x0000)
-  )
-  :
-  (
-    (REG_F&C_FLAG)?
-      (((REG_F&H_FLAG)? 0x6600:((tmp.b.h<0x0A)? 0x6000:0x6600))+C_FLAG):
-      (
-        (REG_F&H_FLAG)?
-          ((REG_A<0xA0)? 0x0600:(0x6600+C_FLAG)):
-          (
-            (tmp.b.h<0x0A)? 
-              ((REG_A<0xA0)? 0x0000:(0x6000+C_FLAG)): 
-	      ((REG_A<0x90)? 0x0600:(0x6600+C_FLAG))
-          )
-      )
-  );
-  REG_A+=tmp.b.h;
-  REG_F=ZTable[REG_A]|(tmp.b.l|(REG_F&N_FLAG));
-//  FLAGS(REG_A,tmp.b.l|(REG_F&N_FLAG));
-  break;
+case 0x27: { // Decimal adjust preserves N, clears H, and recomputes Z/C.
+    unsigned adjustment = 0;
+    bool carry = (REG_F & C_FLAG) != 0;
+    if (REG_F & N_FLAG) {
+        if (REG_F & H_FLAG) adjustment |= 0x06;
+        if (carry) adjustment |= 0x60;
+        REG_A = byte(REG_A - adjustment);
+    } else {
+        if ((REG_F & H_FLAG) || (REG_A & 0x0f) > 9) adjustment |= 0x06;
+        if (carry || REG_A > 0x99) { adjustment |= 0x60; carry = true; }
+        REG_A = byte(REG_A + adjustment);
+    }
+    REG_F = byte((REG_F & N_FLAG) | (carry ? C_FLAG : 0) | (REG_A == 0 ? Z_FLAG : 0));
+    break;
+}
 
 case 0x2F: //CPL(1の補数) :state4
 	REG_A=~REG_A;
@@ -415,20 +393,20 @@ case 0x76:
 #ifndef EXSACT_CORE
 	if (ref_gb->get_regs()->TAC&0x04){//タイマ割りこみ
 		word tmp;
-		tmp=ref_gb->get_regs()->TIMA+(sys_clock+rest_clock)/timer_clocks[ref_gb->get_regs()->TAC&0x03];
+		tmp=ref_gb->get_regs()->TIMA+(sys_clock+rest_clock)/timer_periods[ref_gb->get_regs()->TAC&0x03];
 
 		if (tmp&0xFF00){//HALT中に割りこみがかかる場合
-			total_clock+=(256-ref_gb->get_regs()->TIMA)*timer_clocks[ref_gb->get_regs()->TAC&0x03]-sys_clock;
-			rest_clock-=(256-ref_gb->get_regs()->TIMA)*timer_clocks[ref_gb->get_regs()->TAC&0x03]-sys_clock;
+			total_clock+=(256-ref_gb->get_regs()->TIMA)*timer_periods[ref_gb->get_regs()->TAC&0x03]-sys_clock;
+			rest_clock-=(256-ref_gb->get_regs()->TIMA)*timer_periods[ref_gb->get_regs()->TAC&0x03]-sys_clock;
 			ref_gb->get_regs()->TIMA=ref_gb->get_regs()->TMA;
 			halt=true;
 			REG_PC--;
 			irq(INT_TIMER);
-			sys_clock=(sys_clock+rest_clock)&(timer_clocks[ref_gb->get_regs()->TAC&0x03]-1);
+			sys_clock=(sys_clock+rest_clock)&(timer_periods[ref_gb->get_regs()->TAC&0x03]-1);
 		}
 		else{
 			ref_gb->get_regs()->TIMA=tmp&0xFF;
-			sys_clock=(sys_clock+rest_clock)&(timer_clocks[ref_gb->get_regs()->TAC&0x03]-1);
+			sys_clock=(sys_clock+rest_clock)&(timer_periods[ref_gb->get_regs()->TAC&0x03]-1);
 			halt=true;
 			total_clock+=rest_clock;
 			rest_clock=0;

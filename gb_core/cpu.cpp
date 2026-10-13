@@ -48,6 +48,8 @@ extern retro_log_printf_t log_cb;
 #define N_FLAG 0x02
 #define C_FLAG 0x01
 
+static constexpr unsigned timer_periods[] = {1024, 16, 64, 256};
+
 extern bool logging_transfers_to_file_allowed;
 extern int emulated_gbs;
 
@@ -292,7 +294,7 @@ byte cpu::io_read(word adr)
 	case 0xFF06://TMA(タイマ調整) // TMA (adjustment timer)
 		return ref_gb->get_regs()->TMA;
 	case 0xFF07://TAC(タイマコントロール) // TAC (timer control)
-		return ref_gb->get_regs()->TAC;
+		return ref_gb->get_regs()->TAC | 0xf8;
 	case 0xFF0F://IF(割りこみフラグ) // IF (Interrupt flag)
 		return ref_gb->get_regs()->IF;
 	case 0xFF40://LCDC(LCDコントロール) // LCDC (LCD control)
@@ -433,9 +435,20 @@ void cpu::io_write(word adr,byte dat)
 
 			return;
 		}
-		case 0xFF04://DIV(ディバイダー) // DIV (divider)
-			ref_gb->get_regs()->DIV=0;
-			return;
+        case 0xFF04: { // Resetting DIV can produce a timer-input falling edge.
+            const unsigned divider = (unsigned(ref_gb->get_regs()->DIV) << 8) | unsigned(div_clock);
+            const unsigned period = timer_periods[ref_gb->get_regs()->TAC & 3];
+            if ((ref_gb->get_regs()->TAC & 4) && (divider & (period / 2))) {
+                if (++ref_gb->get_regs()->TIMA == 0) {
+                    ref_gb->get_regs()->TIMA = ref_gb->get_regs()->TMA;
+                    irq(INT_TIMER);
+                }
+            }
+            ref_gb->get_regs()->DIV = 0;
+            div_clock = 0;
+            sys_clock = 0;
+            return;
+        }
 		case 0xFF05://TIMA(タイマカウンタ) // TIMA (timer counter)
 			ref_gb->get_regs()->TIMA=dat;
 //			sys_clock=0;
@@ -992,7 +1005,6 @@ void cpu::exec(int clocks)
 	int tmp_clocks;
 	byte tmpb;
 	pare_reg tmp;
-	static const int timer_clocks[]={1024,16,64,256};
 
 	rest_clock+=clocks;
 
@@ -1040,26 +1052,21 @@ void cpu::exec(int clocks)
 		}
 
 		rest_clock-=tmp_clocks;
-		div_clock+=tmp_clocks;
-		total_clock+=tmp_clocks;
-
-		if (ref_gb->get_regs()->TAC&0x04){//タイマ割りこみ // Timer interrupt
-			sys_clock+=tmp_clocks;
-			if (sys_clock>timer_clocks[ref_gb->get_regs()->TAC&0x03]){
-				sys_clock&=timer_clocks[ref_gb->get_regs()->TAC&0x03]-1;
-				ref_gb->get_regs()->TIMA++;
-				if (!ref_gb->get_regs()->TIMA){
-					irq(INT_TIMER);
-					ref_gb->get_regs()->TIMA=ref_gb->get_regs()->TMA;
-				}
-			}
-		}
-
-		if (div_clock&0x100){
-			ref_gb->get_regs()->DIV-=div_clock>>8;
-			div_clock&=0xff;
-		}
-
+        const unsigned old_divider = (unsigned(ref_gb->get_regs()->DIV) << 8) | unsigned(div_clock);
+        const unsigned new_divider = old_divider + unsigned(tmp_clocks);
+        div_clock = new_divider & 0xff;
+        ref_gb->get_regs()->DIV = byte(new_divider >> 8);
+        total_clock += tmp_clocks;
+        if (ref_gb->get_regs()->TAC & 4) {
+            const unsigned period = timer_periods[ref_gb->get_regs()->TAC & 3];
+            unsigned edges = ((old_divider & (period - 1)) + unsigned(tmp_clocks)) / period;
+            while (edges--) {
+                if (++ref_gb->get_regs()->TIMA == 0) {
+                    irq(INT_TIMER);
+                    ref_gb->get_regs()->TIMA = ref_gb->get_regs()->TMA;
+                }
+            }
+        }
 
 		
 		if (total_clock>seri_occer){

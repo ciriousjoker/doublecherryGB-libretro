@@ -452,7 +452,16 @@ void lcd::sprite_render(void* buf, int scanline)
 	pal[1][2] = m_pal16[(ref_gb->get_regs()->OBP2 >> 4) & 0x3];
 	pal[1][3] = m_pal16[(ref_gb->get_regs()->OBP2 >> 6) & 0x3];
 
-	for (int i = 39; i >= 0; i--) {
+	// OAM search selects the first ten Y matches, including off-screen X.
+	int selected[10];
+	int selected_count = 0;
+	for (int i = 0; i < 40 && selected_count < 10; ++i) {
+		int top = oam[i * 4] - 16;
+		if (scanline >= top && scanline < top + (sp_size ? 16 : 8))
+			selected[selected_count++] = i;
+	}
+	for (int slot = selected_count - 1; slot >= 0; --slot) {
+		int i = selected[slot];
 		int oam_offset = i * 4;
 		int tile = oam[oam_offset + 2];
 		int atr = oam[oam_offset + 3];
@@ -533,6 +542,7 @@ void lcd::sprite_render(void* buf, int scanline)
 				if (px < clip_start) continue;
 
 				int screen_x = x + px;
+				if (screen_x >= 160) continue;
 				byte pixel_val = pixels[px];
 
 				if (pixel_val) {
@@ -551,6 +561,7 @@ void lcd::sprite_render(void* buf, int scanline)
 			// Normal rendering
 			for (int px = 0; px < 8; px++) {
 				int screen_x = x + px;
+				if (screen_x >= 160) continue;
 				byte pixel_val = pixels[px];
 
 				if (pixel_val) {
@@ -860,7 +871,16 @@ void lcd::sprite_render_color(void* buf, int scanline)
 	byte* oam = ref_gb->get_cpu()->get_oam(), * vram = ref_gb->get_cpu()->get_vram();
 	bool sp_size = (ref_gb->get_regs()->LCDC & 0x04) ? true : false;
 
-	for (int i = 39; i >= 0; i--) {
+	// OAM search selects the first ten Y matches, including off-screen X.
+	int selected[10];
+	int selected_count = 0;
+	for (int i = 0; i < 40 && selected_count < 10; ++i) {
+		int top = oam[i * 4] - 16;
+		if (scanline >= top && scanline < top + (sp_size ? 16 : 8))
+			selected[selected_count++] = i;
+	}
+	for (int slot = selected_count - 1; slot >= 0; --slot) {
+		int i = selected[slot];
 		int oam_offset = i * 4;
 		int tile = oam[oam_offset + 2];
 		int atr = oam[oam_offset + 3];
@@ -941,6 +961,8 @@ void lcd::sprite_render_color(void* buf, int scanline)
 				if (px < clip_start) continue;
 
 				int screen_x = x + px;
+				if (screen_x >= 160) continue;
+				if (screen_x >= 160) continue;
 				byte pixel_val = pixels[px];
 				bool trans_clear = !trans_tbl[screen_x];
 				bool priority_clear = !(priority_tbl[screen_x] && trans_tbl[screen_x]);
@@ -954,6 +976,8 @@ void lcd::sprite_render_color(void* buf, int scanline)
 			// Normal rendering
 			for (int px = 0; px < 8; px++) {
 				int screen_x = x + px;
+				if (screen_x >= 160) continue;
+				if (screen_x >= 160) continue;
 				byte pixel_val = pixels[px];
 				bool trans_clear = !trans_tbl[screen_x];
 				bool priority_clear = !(priority_tbl[screen_x] && trans_tbl[screen_x]);
