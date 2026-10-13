@@ -24,11 +24,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fstream>
+#include <algorithm>
 
 extern bool logging_transfers_to_file_allowed;
 
 rom::rom()
 {
+	info = {};
 	b_loaded     = false;
    b_persistent = false;
 
@@ -61,6 +63,7 @@ bool rom::has_battery()
 		 0,0,1,1,0, 1,1,0,0,1,
 		 0,0,0,0,0, 0,0,1,0,1,
 		 1,0, 0,0,0,0,0,0,0,0}; // 0x20以下
+	if (info.cart_type == 0x20) return true;
 	return has_bat[(info.cart_type>0x20)?3:info.cart_type]==1;
 }
 
@@ -68,6 +71,11 @@ int rom::get_sram_size()
 {
 	static const int tbl_ram[]={1,1,1,4,16,8};//0と1は保険
 	return 0x2000*tbl_ram[info.ram_size];
+}
+
+int rom::get_battery_size()
+{
+    return info.cart_type == 0x20 ? Mbc6::BatterySize : get_sram_size();
 }
 
 bool rom::load_rom(byte *buf,int size,byte *ram,int ram_size, bool persistent)
@@ -78,10 +86,26 @@ bool rom::load_rom(byte *buf,int size,byte *ram,int ram_size, bool persistent)
 		size<(0x8000<<buf[0x148]))
 		return false;
 
+	// First supported MBC6 board is the physically existing 1 MiB/32 KiB board.
+	if (buf[0x147] == 0x20 && (buf[0x148] != 5 || buf[0x149] != 3 || size != int(Mbc6::RomSize)))
+		return false;
+	if (ram_size < 0) return false;
+
+    static const int ram_banks[] = {1, 1, 1, 4, 16, 8};
+    const int battery_size = buf[0x147] == 0x20 ? int(Mbc6::BatterySize) : 0x2000 * ram_banks[buf[0x149]];
+    byte *loaded_dat = persistent ? buf : static_cast<byte *>(malloc(size));
+    byte *loaded_sram = static_cast<byte *>(malloc(battery_size));
+    if (!loaded_dat || !loaded_sram) {
+        if (!persistent) free(loaded_dat);
+        free(loaded_sram);
+        return false;
+    }
+    if (!persistent) memcpy(loaded_dat, buf, size);
+
 	byte momocol_title[16]={0x4D,0x4F,0x4D,0x4F,0x43,0x4F,0x4C,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
 
 	if (b_loaded){
-      if (!persistent)
+      if (!b_persistent)
          free(dat);
 		free(sram);
 	}
@@ -104,18 +128,12 @@ bool rom::load_rom(byte *buf,int size,byte *ram,int ram_size, bool persistent)
 
 	info.gb_type=(tmp2&0x80)?3:1;
 
-   if (persistent)
-      dat = (byte*)buf;
-   else
-   {
-      dat=(byte*)malloc(size);
-      memcpy(dat,buf,size);
-   }
-	first_page=dat;
-
-	sram=(byte*)malloc(get_sram_size());
-	if (ram)
-		memcpy(sram,ram,ram_size&0xffffff00);
+    dat = loaded_dat;
+    first_page = dat;
+    sram = loaded_sram;
+	memset(sram, 0xff, get_battery_size());
+	if (info.cart_type == 0x20) sram[Mbc6::ProtectionOffset] = 0;
+	if (ram) memcpy(sram, ram, std::min(ram_size, get_battery_size()));
 
 	b_loaded     = true;
    b_persistent = persistent;
@@ -125,7 +143,9 @@ bool rom::load_rom(byte *buf,int size,byte *ram,int ram_size, bool persistent)
 
 void rom::serialize(serializer &s)
 {
-	s_VAR(info);
-	s.process(sram, get_sram_size());
+    // Cartridge geometry belongs to the loaded ROM, never to untrusted state bytes.
+    rom_info stored_info = info;
+    s_VAR(stored_info);
+    s.process(sram, get_battery_size());
 }
 

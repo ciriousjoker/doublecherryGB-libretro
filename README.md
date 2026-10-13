@@ -250,7 +250,7 @@ Games with Mobile Adapter GB support:
 - Hello Kitty Happy House  
 - Mobile Golf 
 - Mobile Trainer   
-- Net de Get Note: The MBC6 chip is not yet emulated by DoubleCherryGB)
+- Net de Get now has document-derived MBC6 support on this branch. See [MBC6 behavior, save layout and evidence](docs/MBC6.md); physical cartridge validation is still outstanding.
 
 ❤️ Many thanks to pfero for creating libmobile, and to the entire Team Reon for their hard work and dedication in making the Mobile Adapter GB accessible to everyone!
 

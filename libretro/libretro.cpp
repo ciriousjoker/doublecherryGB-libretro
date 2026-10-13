@@ -592,7 +592,7 @@ size_t retro_get_memory_size(unsigned id)
     if (!resolve_memory(id, player, region)) return 0;
     auto *game = v_gb[player];
     switch (region) {
-    case RETRO_MEMORY_SAVE_RAM: return game->get_rom()->get_sram_size();
+    case RETRO_MEMORY_SAVE_RAM: return game->get_rom()->get_battery_size();
     case RETRO_MEMORY_RTC:
         return game->get_rom()->get_info()->cart_type == 0xFE
             ? sizeof(game->get_mbc()->huc3_baseTime) : sizeof(render[player]->fixed_time);
@@ -633,6 +633,7 @@ size_t retro_serialize_size(void)
 
 bool retro_serialize(void *data, size_t size)
 {
+    if (!data || size < retro_serialize_size()) return false;
 
 
     // if (size == retro_serialize_size())
@@ -694,6 +695,7 @@ bool retro_serialize(void *data, size_t size)
 
 bool retro_unserialize(const void *data, size_t size)
 {
+    if (!data || size < retro_serialize_size()) return false;
 
 
     // if (size == retro_serialize_size())

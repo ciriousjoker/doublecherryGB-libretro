@@ -277,6 +277,8 @@ static void libretro_tests(int count) {
     for (int i = 0; i < count; ++i)
         batteries.emplace_back(v_gb[i]->get_rom()->get_sram(), v_gb[i]->get_rom()->get_sram() + 65536);
     std::vector<byte> state(size);
+    require(!retro_serialize(state.data(), state.size() - 1), "Short savestate output rejected");
+    require(!retro_unserialize(state.data(), state.size() - 1), "Short savestate input rejected");
     require(retro_serialize(state.data(), state.size()), "libretro save state");
     for (int i = 0; i < count; ++i) {
         auto* bus = v_gb.at(i)->get_cpu();

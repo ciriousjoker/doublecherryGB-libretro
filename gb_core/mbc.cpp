@@ -49,6 +49,7 @@ void mbc::reset()
 	rom_page=ref_gb->get_rom()->get_rom();
 	sram_page=ref_gb->get_rom()->get_sram();
 
+	mbc6.reset();
 	mbc1_16_8=true;
 	mbc1_dat=0;
 
@@ -92,13 +93,20 @@ void mbc::reset()
 
 }
 
+bool mbc::is_mbc6() { return ref_gb->get_rom()->get_info()->cart_type == 0x20; }
+
+void mbc::advance_mbc6(unsigned clocks) {
+    if (is_mbc6()) mbc6.advance(clocks, ref_gb->get_rom()->get_sram());
+}
+
 byte mbc::read(word adr)
 {
-	return 0;
+    return is_mbc6() ? mbc6.read(adr, ref_gb->get_rom()->get_rom(), ref_gb->get_rom()->get_sram()) : 0;
 }
 
 void mbc::write(word adr,byte dat)
 {
+	if (is_mbc6()) { mbc6.write(adr, dat, ref_gb->get_rom()->get_sram()); return; }
 	switch(ref_gb->get_rom()->get_info()->cart_type){
 	case 1:
 	case 2:
@@ -1113,6 +1121,7 @@ void mbc::mmm01_write(word adr,byte dat)
 
 void mbc::serialize(serializer &s)
 {
+	if (is_mbc6()) { mbc6.serialize(s); return; }
 	byte*  rom = ref_gb->get_rom()->get_rom();
 	byte* sram = ref_gb->get_rom()->get_sram();
 

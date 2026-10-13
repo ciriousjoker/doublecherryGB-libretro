@@ -39,6 +39,7 @@ set(SOURCES
         ${CORE_DIR}/gb_core/gb.cpp
         ${CORE_DIR}/gb_core/lcd.cpp
         ${CORE_DIR}/gb_core/mbc.cpp
+        ${CORE_DIR}/gb_core/mbc6.cpp
         ${CORE_DIR}/gb_core/rom.cpp
         ${CORE_DIR}/gb_core/Infrared_Transceiver.cpp
         ${CORE_DIR}/gb_core/GBPaletteManager.cpp
@@ -181,6 +182,18 @@ add_definitions(-DBUILD_VERSION="${GIT_HASH}")
 option(DCGB_BUILD_TESTS "Build native mapper and libretro regression tests" OFF)
 if(DCGB_BUILD_TESTS)
     enable_testing()
+    add_executable(mbc6_flash_safety tests/mbc6_flash_safety.cpp gb_core/mbc6.cpp)
+    target_include_directories(mbc6_flash_safety PRIVATE ${CORE_DIR})
+    option(DCGB_SANITIZE_MBC6 "Sanitize the standalone native MBC6 safety corpus" OFF)
+    if(DCGB_SANITIZE_MBC6 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(mbc6_flash_safety PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(mbc6_flash_safety PRIVATE -fsanitize=address,undefined)
+    endif()
+    add_test(NAME mbc6_flash_safety COMMAND mbc6_flash_safety)
+    add_executable(mbc6_tests tests/mbc6_tests.cpp)
+    target_include_directories(mbc6_tests PRIVATE ${CORE_DIR} ${CORE_DIR}/gb_core)
+    target_link_libraries(mbc6_tests PRIVATE ${PROJECT_NAME})
+    add_test(NAME mbc6_mapper COMMAND mbc6_tests)
     add_executable(mbc30_tests tests/mbc30_tests.cpp)
     target_include_directories(mbc30_tests PRIVATE ${CORE_DIR} ${CORE_DIR}/gb_core)
     target_link_libraries(mbc30_tests PRIVATE ${PROJECT_NAME})

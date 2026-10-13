@@ -164,6 +164,8 @@ void cpu::restore_state_ex(int *dat)
 
 byte cpu::read_direct(word adr)
 {
+    if (ref_gb->get_mbc()->is_mbc6() && (adr < 0x8000 || (adr >= 0xa000 && adr < 0xc000)))
+        return ref_gb->get_mbc()->read(adr);
 	switch(adr>>13){
 	case 0:
 	case 1:
@@ -212,6 +214,10 @@ byte cpu::read_direct(word adr)
 }
 void cpu::write(word adr,byte dat)
 {
+    if (ref_gb->get_mbc()->is_mbc6() && (adr < 0x8000 || (adr >= 0xa000 && adr < 0xc000))) {
+        ref_gb->get_mbc()->write(adr, dat);
+        return;
+    }
 	switch(adr>>13){
 	case 0:
 	case 1:
@@ -310,6 +316,7 @@ byte cpu::io_read(word adr)
 	case 0xFF45://LYC(LY比較) // LYC (compare LY)
 		return ref_gb->get_regs()->LYC;
 	case 0xFF46://DMA(DMA転送) // DMA (DMA transfer)
+
 		return 0;
 	case 0xFF47://BGP(背景パレット) BGP (background palette)
 		return ref_gb->get_regs()->BGP;
@@ -496,6 +503,10 @@ void cpu::io_write(word adr,byte dat)
 			ref_gb->get_regs()->LYC=dat;
 			return;
 		case 0xFF46://DMA(DMA転送) // DMA (DMA transfer)
+            if (ref_gb->get_mbc()->is_mbc6()) {
+                for (unsigned i = 0; i < 0xa0; ++i) oam[i] = read_direct(word(unsigned(dat) * 256 + i));
+                return;
+            }
 			switch(dat>>5){
 			case 0:
 			case 1:
@@ -623,7 +634,10 @@ void cpu::io_write(word adr,byte dat)
 				dma_rest=0;
 				ref_gb->get_cregs()->HDMA5=0xFF;
 
-				switch(dma_src>>13){
+                if (ref_gb->get_mbc()->is_mbc6()) {
+                    for (unsigned i = 0; i < 16u * ((dat & 0x7f) + 1); ++i)
+                        vram_bank[(dma_dest + i) & 0x1fff] = read_direct(word(dma_src + i));
+                } else switch(dma_src>>13){
 				case 0:
 				case 1:
 					memcpy(vram_bank+(dma_dest&0x1ff0),ref_gb->get_rom()->get_rom()+(dma_src),16*(dat&0x7F)+16);
@@ -993,6 +1007,8 @@ void cpu::irq_process()
 
 void cpu::exec(int clocks)
 {
+	// Cartridge flash runs on elapsed base-clock time, also during HALT/DMA.
+	ref_gb->get_mbc()->advance_mbc6(unsigned(clocks));
 
 	if (speed)
 		clocks*=2;

@@ -439,7 +439,10 @@ void gb::run_step()
                         m_cpu->b_dma_first = false;
                     }
 
-                    memcpy(m_cpu->dma_dest_bank + (m_cpu->dma_dest & 0x1ff0), m_cpu->dma_src_bank + m_cpu->dma_src, 16);
+                    if (m_mbc->is_mbc6()) {
+                        for (unsigned i = 0; i < 16; ++i)
+                            m_cpu->dma_dest_bank[(m_cpu->dma_dest + i) & 0x1fff] = m_cpu->read_direct(word(m_cpu->dma_src + i));
+                    } else memcpy(m_cpu->dma_dest_bank + (m_cpu->dma_dest & 0x1ff0), m_cpu->dma_src_bank + m_cpu->dma_src, 16);
                     m_cpu->dma_src += 16;
                     m_cpu->dma_src &= 0xfff0;
                     m_cpu->dma_dest += 16;
@@ -526,7 +529,10 @@ void gb::run()
 						else m_cpu->dma_src_bank=NULL;
 						m_cpu->b_dma_first=false;
 					}
-					memcpy(m_cpu->dma_dest_bank+(m_cpu->dma_dest&0x1ff0),m_cpu->dma_src_bank+m_cpu->dma_src,16);
+                    if (m_mbc->is_mbc6()) {
+                        for (unsigned i = 0; i < 16; ++i)
+                            m_cpu->dma_dest_bank[(m_cpu->dma_dest + i) & 0x1fff] = m_cpu->read_direct(word(m_cpu->dma_src + i));
+                    } else memcpy(m_cpu->dma_dest_bank+(m_cpu->dma_dest&0x1ff0),m_cpu->dma_src_bank+m_cpu->dma_src,16);
 //					fprintf(m_cpu->file,"%03d : dma exec %04X -> %04X rest %d\n",regs.LY,m_cpu->dma_src,m_cpu->dma_dest,m_cpu->dma_rest);
 
 					m_cpu->dma_src+=16;

@@ -37,6 +37,7 @@
 #include "gb_types.h"
 #include "renderer.h"
 #include "serializer.h"
+#include "mbc6.h"
 #include "GBPaletteManager.hpp"
 
 
@@ -624,6 +625,8 @@ public:
 	byte* get_sram() { return sram_page; }
 	bool is_ext_ram() { return ext_is_ram; }
 	void set_ext_is(bool ext) { ext_is_ram = ext; }
+	bool is_mbc6();
+	void advance_mbc6(unsigned clocks);
 
 	int get_state();
 	void set_state(int dat);
@@ -641,6 +644,7 @@ public:
 	Huc3_Rtc_State huc3_state{};
 
 private:
+	Mbc6 mbc6;
 	void mbc1_write(word adr, byte dat);
 	void mbc2_write(word adr, byte dat);
 	void mbc3_write(word adr, byte dat);
@@ -735,6 +739,7 @@ public:
 
 	bool has_battery();
 	int get_sram_size(); // byte単位
+	int get_battery_size();
 
 	void set_first(int page) { first_page=dat+0x4000*page; }
 

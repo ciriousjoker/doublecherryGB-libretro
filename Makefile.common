@@ -13,6 +13,7 @@ SOURCES_CXX := \
     $(CORE_DIR)/gb_core/gb.cpp \
     $(CORE_DIR)/gb_core/lcd.cpp \
     $(CORE_DIR)/gb_core/mbc.cpp \
+    $(CORE_DIR)/gb_core/mbc6.cpp \
     $(CORE_DIR)/gb_core/rom.cpp \
     $(CORE_DIR)/gb_core/Infrared_Transceiver.cpp \
     $(CORE_DIR)/gb_core/GBPaletteManager.cpp \
