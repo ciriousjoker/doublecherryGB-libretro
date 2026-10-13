@@ -63,6 +63,9 @@ Mobile_Adapter_GB::Mobile_Adapter_GB(gb* target_gb, std::string configPath)
     setupCallbacks();
 
     loadConfig();
+    // The adapter is created after the initial core option pass. Apply options
+    // before starting, rather than waiting for a frontend option-change event.
+    update_options_from_libretro(environ_cb);
 
     if (log_cb) log_cb(RETRO_LOG_INFO, "[Mobile] Adapter initialized\n");
     start();
@@ -388,13 +391,11 @@ void Mobile_Adapter_GB::setupCallbacks()
         auto* self = static_cast<Mobile_Adapter_GB*>(u);
         if (!self || !self->connected_gb) return true;
 
-        uint64_t current_cycles = self->connected_gb->get_cpu()->get_clock();
-        uint64_t latched_cycles = self->m_time_micros_latches[t];
-
-        if (current_cycles < latched_cycles) return true;
-
-        uint64_t elapsed_cycles = current_cycles - latched_cycles;
-        uint64_t ticks_per_ms = self->m_is_double_speed ? GBC_TICKS_PER_MS_DOUBLE : GBC_TICKS_PER_MS_NORMAL;
+        uint32_t current_cycles = static_cast<uint32_t>(self->connected_gb->get_cpu()->get_clock());
+        uint32_t latched_cycles = static_cast<uint32_t>(self->m_time_micros_latches[t]);
+        // Unsigned subtraction preserves intervals across the 32-bit clock boundary.
+        uint32_t elapsed_cycles = current_cycles - latched_cycles;
+        uint64_t ticks_per_ms = self->connected_gb->get_cpu()->get_speed() ? GBC_TICKS_PER_MS_DOUBLE : GBC_TICKS_PER_MS_NORMAL;
         return elapsed_cycles > ((uint64_t)ms * ticks_per_ms);
     });
 
@@ -475,7 +476,7 @@ void Mobile_Adapter_GB::setupCallbacks()
 
             struct timeval tv;
             tv.tv_sec = 0;
-            tv.tv_usec = 500;
+            tv.tv_usec = 0; // Poll only; never delay the frontend frame for a connection.
 
             int select_rc = select(it->second.fd + 1, NULL, &wr_fds, NULL, &tv);
             if (select_rc > 0) {
