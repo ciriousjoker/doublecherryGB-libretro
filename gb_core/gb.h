@@ -628,6 +628,11 @@ public:
 	bool is_ext_ram() { return ext_is_ram; }
 	void set_ext_is(bool ext) { ext_is_ram = ext; }
 	bool is_mbc6();
+#ifdef DCGB_CPU_PROFILE
+    uint32_t profile_rom_offset(uint16_t address) {
+        return is_mbc6() ? mbc6.profile_rom_offset(address) : 0xffffffffu;
+    }
+#endif
 	void advance_mbc6(unsigned clocks);
 
 	int get_state();

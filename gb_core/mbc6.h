@@ -14,6 +14,15 @@ public:
     static constexpr unsigned ProgramTicks = 4195;  // Deterministic model: 1 ms.
     static constexpr unsigned EraseTicks = 25166;   // Deterministic model: 6 ms.
 
+#ifdef DCGB_CPU_PROFILE
+    uint32_t profile_rom_offset(uint16_t address) const {
+        if (address < 0x4000) return address;
+        if (address >= 0x8000) return 0xffffffffu;
+        const unsigned window = (address - 0x4000) >> 13;
+        if (flash_select[window]) return 0xffffffffu;
+        return uint32_t(rom_bank[window] & 127) * 0x2000 + (address & 0x1fff);
+    }
+#endif
     void reset();
     uint8_t read(uint16_t address, const uint8_t *rom, const uint8_t *battery) const;
     void write(uint16_t address, uint8_t value, uint8_t *battery);

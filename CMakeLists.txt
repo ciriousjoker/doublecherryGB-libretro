@@ -103,6 +103,10 @@ set(SOURCES
 
 # Bibliothek erstellen
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
+option(DCGB_CPU_PROFILE "Enable optional read-only host instruction observation" OFF)
+if(DCGB_CPU_PROFILE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE DCGB_CPU_PROFILE)
+endif()
 
 # Verlinkung mit libmobile (Target-Name aus der externen CMakeLists)
 # Das sorgt dafür, dass die Symbole beim Linken in deine .so-Datei wandern
@@ -219,4 +223,11 @@ if(DCGB_BUILD_TESTS)
         target_link_options(clock_wrap_tests PRIVATE -fsanitize=undefined)
     endif()
     add_test(NAME clock_wrap COMMAND clock_wrap_tests)
+endif()
+
+if(DCGB_BUILD_TESTS AND DCGB_CPU_PROFILE)
+    add_executable(cpu_profile_geometry tests/cpu_profile_geometry.cpp gb_core/mbc6.cpp)
+    target_include_directories(cpu_profile_geometry PRIVATE ${CORE_DIR})
+    target_compile_definitions(cpu_profile_geometry PRIVATE DCGB_CPU_PROFILE)
+    add_test(NAME cpu_profile_geometry COMMAND cpu_profile_geometry)
 endif()

@@ -23,6 +23,14 @@
 
 #include "gb.h"
 #include "clock_math.hpp"
+#ifdef DCGB_CPU_PROFILE
+#include "cpu_profile.h"
+static CpuProfileObserver cpu_observer = nullptr;
+static void *cpu_observer_context = nullptr;
+void dcgb_set_cpu_observer(CpuProfileObserver observer, void *context) {
+    cpu_observer = observer; cpu_observer_context = context;
+}
+#endif
 #include "../libretro/DoubleCherryEngine/libretro.h"
 #include <string>
 #include <istream>
@@ -215,6 +223,11 @@ byte cpu::read_direct(word adr)
 }
 void cpu::write(word adr,byte dat)
 {
+#ifdef DCGB_CPU_PROFILE
+    if (cpu_observer && (adr < 0x8000 || (adr >= 0xa000 && adr < 0xc000) || adr == 0xff70))
+        cpu_observer({this, CpuProfileKind::MemoryWrite, regs.PC, adr, 0xffffffffu,
+                      0, dat, false, speed}, cpu_observer_context);
+#endif
     if (ref_gb->get_mbc()->is_mbc6() && (adr < 0x8000 || (adr >= 0xa000 && adr < 0xc000))) {
         ref_gb->get_mbc()->write(adr, dat);
         return;
@@ -1026,6 +1039,10 @@ void cpu::exec(int clocks)
 	rest_clock+=clocks;
 
 	if (gdma_rest){
+#ifdef DCGB_CPU_PROFILE
+        if (cpu_observer) cpu_observer({this, CpuProfileKind::Dma, regs.PC, 0, 0xffffffffu,
+            unsigned(rest_clock <= gdma_rest ? rest_clock : gdma_rest), 0, true, speed}, cpu_observer_context);
+#endif
 		if (rest_clock<=gdma_rest){
 			gdma_rest-=rest_clock;
 			sys_clock+=rest_clock;
@@ -1049,8 +1066,17 @@ void cpu::exec(int clocks)
 
 		irq_process();
 
+#ifdef DCGB_CPU_PROFILE
+        const uint16_t profile_pc = regs.PC;
+        const uint32_t profile_clock = total_clock;
+        const bool profile_idle = halt, profile_speed = speed;
+        const uint32_t profile_offset = cpu_observer ? ref_gb->get_mbc()->profile_rom_offset(profile_pc) : 0xffffffffu;
+#endif
 		op_code=op_read();
 		tmp_clocks=cycles[op_code];
+#ifdef DCGB_CPU_PROFILE
+        const uint8_t profile_opcode = op_code;
+#endif
 
 //		if (b_trace)
 //			log();
@@ -1068,6 +1094,12 @@ void cpu::exec(int clocks)
 			break;
 		}
 
+#ifdef DCGB_CPU_PROFILE
+        if (cpu_observer)
+            cpu_observer({this, CpuProfileKind::Instruction, profile_pc, 0, profile_offset,
+                          uint32_t(total_clock-profile_clock)+unsigned(tmp_clocks), profile_opcode,
+                          profile_idle || profile_opcode==0x76, profile_speed}, cpu_observer_context);
+#endif
 		rest_clock-=tmp_clocks;
         const unsigned old_divider = (unsigned(ref_gb->get_regs()->DIV) << 8) | unsigned(div_clock);
         const unsigned new_divider = old_divider + unsigned(tmp_clocks);
